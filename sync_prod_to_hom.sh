@@ -10,23 +10,23 @@ echo "Iniciando sync_prod_to_hom.sh..." >> "$LOG_FILE"
 # Configurar codificação
 export PGCLIENTENCODING=UTF8
 
-# Configurações do banco de produção
-PROD_HOST=aws-0-sa-east-1.pooler.supabase.com
-PROD_PORT=5432
-PROD_USER=postgres.yavxiavcvjmnrbyijiwd
+# Configurações do banco de produção (ORIGEM - troque com seus valores reais)
+PROD_HOST=db.terdsdmcunfhfhheewsk.supabase.co  # Seu host origem
+PROD_PORT=5432  # Ou 6543 se pooling
+PROD_USER=postgres
 PROD_DB=postgres
-PROD_PASSWORD="$PROD_PASSWORD"
+PROD_PASSWORD="$PROD_PASSWORD"  # Puxa da secret
 
-# Configurações do banco de homologação
-HOM_HOST=aws-0-us-east-2.pooler.supabase.com
-HOM_PORT=6543
-HOM_USER=postgres.ltpzpmkqtbxlpvlubgqi
+# Configurações do banco de homologação (DESTINO - troque com o outro projeto)
+HOM_HOST=seu_host_destino.supabase.co  # Ex.: db.outro-ref.supabase.co
+HOM_PORT=6543  # Ajuste
+HOM_USER=postgres
 HOM_DB=postgres
-HOM_PASSWORD="$HOM_PASSWORD"
+HOM_PASSWORD="$HOM_PASSWORD"  # Puxa da secret
 
 # Configurações para API Supabase (para storage)
-PROD_REF=yavxiavcvjmnrbyijiwd
-HOM_REF=ltpzpmkqtbxlpvlubgqi
+PROD_REF=terdsdmcunfhfhheewsk
+HOM_REF=kuyxmznpppyfbvzujipn
 PROD_API_URL=https://${PROD_REF}.supabase.co
 HOM_API_URL=https://${HOM_REF}.supabase.co
 PROD_SERVICE_KEY="$PROD_SERVICE_KEY"
