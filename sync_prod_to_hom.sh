@@ -1,49 +1,44 @@
 #!/bin/bash
-
 # Definir LOG_FILE primeiro para usar nos echos iniciais
 BASE_DIR=/home/runner/scripts
 mkdir -p $BASE_DIR
 LOG_FILE=$BASE_DIR/sync_log_$(date +%Y%m%d_%H%M%S).txt
-
 echo "Iniciando sync_prod_to_hom.sh..." >> "$LOG_FILE"
-
 # Configurar codificação
 export PGCLIENTENCODING=UTF8
-
-# Configurações do banco de produção (ORIGEM - troque com seus valores reais)
-PROD_HOST=db.terdsdmcunfhfhheewsk.supabase.co  # Seu host origem
-PROD_PORT=5432  # Ou 6543 se pooling
+# Configurações do banco de produção (ORIGEM)
+PROD_HOST=db.terdsdmcunfhfhheewsk.supabase.co
+PROD_PORT=6543 # Mudado para pooling (recomendado para estabilidade no Actions)
 PROD_USER=postgres
 PROD_DB=postgres
-PROD_PASSWORD="$PROD_PASSWORD"  # Puxa da secret
-
-# Configurações do banco de homologação (DESTINO - troque com o outro projeto)
-HOM_HOST=db.kuyxmznpppyfbvzujipn.supabase.co  # Ex.: db.outro-ref.supabase.co
-HOM_PORT=5432  # Ajuste
+PROD_PASSWORD="0000" # Senha hardcoded para teste (NÃO USE EM PRODUÇÃO REAL!)
+# Configurações do banco de homologação (DESTINO)
+HOM_HOST=db.kuyxmznpppyfbvzujipn.supabase.co
+HOM_PORT=6543 # Mudado para pooling
 HOM_USER=postgres
 HOM_DB=postgres
-HOM_PASSWORD="$HOM_PASSWORD"  # Puxa da secret
-
+HOM_PASSWORD="rio_bonito1234" # Senha hardcoded para teste (NÃO USE EM PRODUÇÃO REAL!)
 # Configurações para API Supabase (para storage)
 PROD_REF=terdsdmcunfhfhheewsk
 HOM_REF=kuyxmznpppyfbvzujipn
 PROD_API_URL=https://${PROD_REF}.supabase.co
 HOM_API_URL=https://${HOM_REF}.supabase.co
-PROD_SERVICE_KEY="$PROD_SERVICE_KEY"
-HOM_SERVICE_KEY="$HOM_SERVICE_KEY"
-
+PROD_SERVICE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlcmRzZG1jdW5maGZoaGVld3NrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDk2NTExMiwiZXhwIjoyMDgwNTQxMTEyfQ.vUuCkrna5_PGyxJ4eNjnIGbYMLLIYmeEIzOUvQGUHlo" # Hardcoded para teste
+HOM_SERVICE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt1eXhtem5wcHB5ZmJ2enVqaXBuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDM3OTg0NCwiZXhwIjoyMDc1OTU1ODQ0fQ.-SFmgBDlzIuqI9g8O2AgQIyNUX5f5RUf0txtRSWS4NY" # Hardcoded para teste
 # Schemas gerenciados pelo Supabase que devem ser excluídos
 EXCLUDED_SCHEMAS="'information_schema','pg_catalog','pg_toast','auth','storage','graphql','realtime','extensions','supabase_functions','supabase_migrations','net','_realtime','_analytics','_net'"
-
 # Caminho para arquivos
 DUMP_FILE=$BASE_DIR/dumpsupabase_full.sql
 CLEAN_SCRIPT=$BASE_DIR/clean_public_schema.sql
 GRANT_SCRIPT=$BASE_DIR/grant_privileges.sql
-
 # Iniciar log
 echo "Início: $(date)" >> "$LOG_FILE"
 echo "Diretório base: $BASE_DIR" >> "$LOG_FILE"
-
+# Adicionar logs extras para depuração
+echo "PROD_HOST: $PROD_HOST | PROD_PORT: $PROD_PORT" >> "$LOG_FILE"
+echo "HOM_HOST: $HOM_HOST | HOM_PORT: $HOM_PORT" >> "$LOG_FILE"
+echo "PROD_SERVICE_KEY definida: ${PROD_SERVICE_KEY:+sim}" >> "$LOG_FILE"
+echo "HOM_SERVICE_KEY definida: ${HOM_SERVICE_KEY:+sim}" >> "$LOG_FILE"
 # Verificar ferramentas
 echo "Verificando ferramentas..." >> "$LOG_FILE"
 command -v pg_dump >> "$LOG_FILE" 2>&1 || { echo "Erro: pg_dump não encontrado." >> "$LOG_FILE"; exit 1; }
@@ -53,7 +48,6 @@ if [ $? -ne 0 ]; then
     echo "Erro ao instalar jq." >> "$LOG_FILE"
     exit 1
 fi
-
 # Verificar conexão com o banco de produção
 echo "Verifying connection to production database..." >> "$LOG_FILE"
 export PGPASSWORD=$PROD_PASSWORD
@@ -62,7 +56,6 @@ if [ $? -ne 0 ]; then
     echo "Erro: Falha na conexão com o banco de produção." >> "$LOG_FILE"
     exit 1
 fi
-
 # Verificar conexão com o banco de homologação
 echo "Verifying connection to staging database..." >> "$LOG_FILE"
 export PGPASSWORD=$HOM_PASSWORD
@@ -71,7 +64,6 @@ if [ $? -ne 0 ]; then
     echo "Erro: Falha na conexão com o banco de homologação." >> "$LOG_FILE"
     exit 1
 fi
-
 # Obter todos os schemas do banco de produção, excluindo os gerenciados e system
 echo "Obtendo todos os schemas do banco de produção..." >> "$LOG_FILE"
 export PGPASSWORD=$PROD_PASSWORD
@@ -83,14 +75,12 @@ if [ -z "$SCHEMAS" ]; then
     echo "Lista completa de schemas no banco de produção (incluindo excluídos):" >> "$LOG_FILE"
     exit 0
 fi
-
 # Preparar parâmetros para schemas
 schemas_params=""
 for schema in $SCHEMAS; do
     schemas_params="$schemas_params --schema=$schema"
     echo "Incluindo schema para dump: $schema" >> "$LOG_FILE"
 done
-
 # Gerar dump
 echo "Gerando dump em $DUMP_FILE..." >> "$LOG_FILE"
 export PGPASSWORD=$PROD_PASSWORD
@@ -99,7 +89,6 @@ if [ $? -ne 0 ]; then
     echo "Erro ao gerar o dump. Verifique permissões ou configurações do banco." >> "$LOG_FILE"
     exit 1
 fi
-
 # Remover configurações problemáticas (transaction_timeout e ALTER DEFAULT PRIVILEGES para supabase_admin)
 echo "Removendo configurações problemáticas do dump..." >> "$LOG_FILE"
 sed -i -e '/SET transaction_timeout/d' -e '/ALTER DEFAULT PRIVILEGES.*supabase_admin/d' "$DUMP_FILE"
@@ -107,7 +96,6 @@ if [ $? -ne 0 ]; then
     echo "Erro ao processar o dump." >> "$LOG_FILE"
     exit 1
 fi
-
 # Criar script de limpeza
 echo "Criando script de limpeza em $CLEAN_SCRIPT..." >> "$LOG_FILE"
 cat > "$CLEAN_SCRIPT" << EOF
@@ -125,7 +113,6 @@ cat >> "$CLEAN_SCRIPT" << EOF
 SET client_encoding='UTF8';
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
 EOF
-
 # Criar script de concessão de privilégios
 echo "Criando script de privilégios em $GRANT_SCRIPT..." >> "$LOG_FILE"
 cat > "$GRANT_SCRIPT" << EOF
@@ -137,7 +124,6 @@ GRANT ALL ON ALL TABLES IN SCHEMA $schema TO anon;
 ALTER DEFAULT PRIVILEGES IN SCHEMA $schema GRANT ALL ON TABLES TO anon;
 EOF
 done
-
 # Limpar schemas
 echo "Limpando schemas..." >> "$LOG_FILE"
 export PGPASSWORD=$HOM_PASSWORD
@@ -146,7 +132,6 @@ if [ $? -ne 0 ]; then
     echo "Erro ao limpar os schemas." >> "$LOG_FILE"
     exit 1
 fi
-
 # Restaurar dump
 echo "Restaurando dump a partir de $DUMP_FILE..." >> "$LOG_FILE"
 export PGPASSWORD=$HOM_PASSWORD
@@ -155,7 +140,6 @@ if [ $? -ne 0 ]; then
     echo "Erro ao restaurar o dump." >> "$LOG_FILE"
     exit 1
 fi
-
 # Aplicar privilégios
 echo "Aplicando privilégios em $GRANT_SCRIPT..." >> "$LOG_FILE"
 export PGPASSWORD=$HOM_PASSWORD
@@ -164,16 +148,13 @@ if [ $? -ne 0 ]; then
     echo "Erro ao aplicar privilégios." >> "$LOG_FILE"
     exit 1
 fi
-
 # Sincronizar storage (buckets e objetos)
 echo "Sincronizando storage..." >> "$LOG_FILE"
-
 # Validar chaves de API
 if [ -z "$PROD_SERVICE_KEY" ] || [ -z "$HOM_SERVICE_KEY" ]; then
     echo "Erro: PROD_SERVICE_KEY ou HOM_SERVICE_KEY não definidas." >> "$LOG_FILE"
     exit 1
 fi
-
 # Testar permissões da chave de produção
 echo "Testando chave de API da produção..." >> "$LOG_FILE"
 prod_key_test=$(curl -s -X GET -H "Authorization: Bearer $PROD_SERVICE_KEY" -H "Content-Type: application/json" "${PROD_API_URL}/storage/v1/bucket" 2>> "$LOG_FILE")
@@ -181,7 +162,6 @@ if [[ $prod_key_test == *"error"* ]]; then
     echo "Erro: Falha ao autenticar com PROD_SERVICE_KEY: $prod_key_test" >> "$LOG_FILE"
     exit 1
 fi
-
 # Testar permissões da chave de homologação
 echo "Testando chave de API da homologação..." >> "$LOG_FILE"
 hom_key_test=$(curl -s -X GET -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: application/json" "${HOM_API_URL}/storage/v1/bucket" 2>> "$LOG_FILE")
@@ -189,18 +169,15 @@ if [[ $hom_key_test == *"error"* ]]; then
     echo "Erro: Falha ao autenticar com HOM_SERVICE_KEY: $hom_key_test" >> "$LOG_FILE"
     exit 1
 fi
-
 # Listar buckets da produção
 source_buckets=$(curl -s -X GET -H "Authorization: Bearer $PROD_SERVICE_KEY" -H "Content-Type: application/json" "${PROD_API_URL}/storage/v1/bucket" | jq -r '.[] | .name' | tr '\n' ' ')
 echo "Buckets encontrados na produção: $source_buckets" >> "$LOG_FILE"
 if [ -z "$source_buckets" ]; then
     echo "Aviso: Nenhum bucket encontrado na produção." >> "$LOG_FILE"
 fi
-
 # Listar buckets da homologação
 hom_buckets=$(curl -s -X GET -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: application/json" "${HOM_API_URL}/storage/v1/bucket" | jq -r '.[] | .name' | tr '\n' ' ')
 echo "Buckets encontrados na homologação: $hom_buckets" >> "$LOG_FILE"
-
 # Deletar buckets na homologação que não existem na produção
 for hom_bucket in $hom_buckets; do
     if ! echo " $source_buckets " | grep -q " $hom_bucket "; then
@@ -213,7 +190,6 @@ for hom_bucket in $hom_buckets; do
         fi
     fi
 done
-
 # Processar buckets da produção
 for prod_bucket in $source_buckets; do
     echo "Processando bucket: $prod_bucket" >> "$LOG_FILE"
@@ -280,7 +256,6 @@ for prod_bucket in $source_buckets; do
         offset=$((offset + limit))
     done
 done
-
 # Limpar arquivos temporários
 echo "Limpando arquivos temporários..." >> "$LOG_FILE"
 rm -f "$DUMP_FILE" "$CLEAN_SCRIPT" "$GRANT_SCRIPT" "$BASE_DIR/temp_storage_*"
