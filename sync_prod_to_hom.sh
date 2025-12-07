@@ -18,7 +18,7 @@ PROD_DB=postgres
 PROD_PASSWORD="$PROD_PASSWORD"  # Puxa da secret
 
 # Configurações do banco de homologação (DESTINO - troque com o outro projeto)
-HOM_HOST=seu_host_destino.supabase.co  # Ex.: db.outro-ref.supabase.co
+HOM_HOST=db.kuyxmznpppyfbvzujipn.supabase.co  # Ex.: db.outro-ref.supabase.co
 HOM_PORT=6543  # Ajuste
 HOM_USER=postgres
 HOM_DB=postgres
