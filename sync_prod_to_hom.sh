@@ -1,57 +1,287 @@
-#!/bin/bash echo "Iniciando sync_prod_to_hom.sh..." >> "$LOG_FILE"
+#!/bin/bash
+
+# Definir LOG_FILE primeiro para usar nos echos iniciais
+BASE_DIR=/home/runner/scripts
+mkdir -p $BASE_DIR
+LOG_FILE=$BASE_DIR/sync_log_$(date +%Y%m%d_%H%M%S).txt
+
+echo "Iniciando sync_prod_to_hom.sh..." >> "$LOG_FILE"
+
 # Configurar codificação
 export PGCLIENTENCODING=UTF8
+
 # Configurações do banco de produção
-PROD_HOST=aws-0-sa-east-1.pooler.supabase.com PROD_PORT=5432 PROD_USER=postgres.yavxiavcvjmnrbyijiwd PROD_DB=postgres PROD_PASSWORD="$PROD_PASSWORD"
+PROD_HOST=aws-0-sa-east-1.pooler.supabase.com
+PROD_PORT=5432
+PROD_USER=postgres.yavxiavcvjmnrbyijiwd
+PROD_DB=postgres
+PROD_PASSWORD="$PROD_PASSWORD"
+
 # Configurações do banco de homologação
-HOM_HOST=aws-0-us-east-2.pooler.supabase.com HOM_PORT=6543 HOM_USER=postgres.ltpzpmkqtbxlpvlubgqi HOM_DB=postgres HOM_PASSWORD="$HOM_PASSWORD"
+HOM_HOST=aws-0-us-east-2.pooler.supabase.com
+HOM_PORT=6543
+HOM_USER=postgres.ltpzpmkqtbxlpvlubgqi
+HOM_DB=postgres
+HOM_PASSWORD="$HOM_PASSWORD"
+
 # Configurações para API Supabase (para storage)
-PROD_REF=yavxiavcvjmnrbyijiwd HOM_REF=ltpzpmkqtbxlpvlubgqi PROD_API_URL=https://${PROD_REF}.supabase.co HOM_API_URL=https://${HOM_REF}.supabase.co PROD_SERVICE_KEY="$PROD_SERVICE_KEY" HOM_SERVICE_KEY="$HOM_SERVICE_KEY"
+PROD_REF=yavxiavcvjmnrbyijiwd
+HOM_REF=ltpzpmkqtbxlpvlubgqi
+PROD_API_URL=https://${PROD_REF}.supabase.co
+HOM_API_URL=https://${HOM_REF}.supabase.co
+PROD_SERVICE_KEY="$PROD_SERVICE_KEY"
+HOM_SERVICE_KEY="$HOM_SERVICE_KEY"
+
 # Schemas gerenciados pelo Supabase que devem ser excluídos
 EXCLUDED_SCHEMAS="'information_schema','pg_catalog','pg_toast','auth','storage','graphql','realtime','extensions','supabase_functions','supabase_migrations','net','_realtime','_analytics','_net'"
-# Caminho para arquivos e logs
-BASE_DIR=/home/runner/scripts mkdir -p $BASE_DIR DUMP_FILE=$BASE_DIR/dumpsupabase_full.sql CLEAN_SCRIPT=$BASE_DIR/clean_public_schema.sql GRANT_SCRIPT=$BASE_DIR/grant_privileges.sql LOG_FILE=BASE_DIR/sync_log_(date +%Y%m%d_%H%M%S).txt
+
+# Caminho para arquivos
+DUMP_FILE=$BASE_DIR/dumpsupabase_full.sql
+CLEAN_SCRIPT=$BASE_DIR/clean_public_schema.sql
+GRANT_SCRIPT=$BASE_DIR/grant_privileges.sql
+
 # Iniciar log
-echo "Início: $(date)" > "$LOG_FILE" echo "Diretório base: $BASE_DIR" >> "$LOG_FILE"
+echo "Início: $(date)" >> "$LOG_FILE"
+echo "Diretório base: $BASE_DIR" >> "$LOG_FILE"
+
 # Verificar ferramentas
-echo "Verificando ferramentas..." >> "$LOG_FILE" command -v pg_dump >> "$LOG_FILE" 2>&1 || { echo "Erro: pg_dump não encontrado." >> "$LOG_FILE"; exit 1; } command -v psql >> "$LOG_FILE" 2>&1 || { echo "Erro: psql não encontrado." >> "$LOG_FILE"; exit 1; } command -v jq >/dev/null 2>&1 || { sudo apt-get update -y && sudo apt-get install -y jq; } >> "$LOG_FILE" 2>&1 if [ $? -ne 0 ]; then     echo "Erro ao instalar jq." >> "$LOG_FILE"     exit 1 fi
+echo "Verificando ferramentas..." >> "$LOG_FILE"
+command -v pg_dump >> "$LOG_FILE" 2>&1 || { echo "Erro: pg_dump não encontrado." >> "$LOG_FILE"; exit 1; }
+command -v psql >> "$LOG_FILE" 2>&1 || { echo "Erro: psql não encontrado." >> "$LOG_FILE"; exit 1; }
+command -v jq >/dev/null 2>&1 || { sudo apt-get update -y && sudo apt-get install -y jq; } >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    echo "Erro ao instalar jq." >> "$LOG_FILE"
+    exit 1
+fi
+
 # Verificar conexão com o banco de produção
-echo "Verifying connection to production database..." >> "$LOG_FILE" export PGPASSWORD=$PROD_PASSWORD psql --host=$PROD_HOST --port=$PROD_PORT --username=$PROD_USER --dbname=$PROD_DB --command="SELECT 1;" >> "$LOG_FILE" 2>&1 if [ $? -ne 0 ]; then     echo "Erro: Falha na conexão com o banco de produção." >> "$LOG_FILE"     exit 1 fi
+echo "Verifying connection to production database..." >> "$LOG_FILE"
+export PGPASSWORD=$PROD_PASSWORD
+psql --host=$PROD_HOST --port=$PROD_PORT --username=$PROD_USER --dbname=$PROD_DB --command="SELECT 1;" >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    echo "Erro: Falha na conexão com o banco de produção." >> "$LOG_FILE"
+    exit 1
+fi
+
 # Verificar conexão com o banco de homologação
-echo "Verifying connection to staging database..." >> "$LOG_FILE" export PGPASSWORD=$HOM_PASSWORD psql --host=$HOM_HOST --port=$HOM_PORT --username=$HOM_USER --dbname=$HOM_DB --command="SELECT 1;" >> "$LOG_FILE" 2>&1 if [ $? -ne 0 ]; then     echo "Erro: Falha na conexão com o banco de homologação." >> "$LOG_FILE"     exit 1 fi
+echo "Verifying connection to staging database..." >> "$LOG_FILE"
+export PGPASSWORD=$HOM_PASSWORD
+psql --host=$HOM_HOST --port=$HOM_PORT --username=$HOM_USER --dbname=$HOM_DB --command="SELECT 1;" >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    echo "Erro: Falha na conexão com o banco de homologação." >> "$LOG_FILE"
+    exit 1
+fi
+
 # Obter todos os schemas do banco de produção, excluindo os gerenciados e system
-echo "Obtendo todos os schemas do banco de produção..." >> "$LOG_FILE" export PGPASSWORD=$PROD_PASSWORD SCHEMAS=$(psql -h $PROD_HOST -p $PROD_PORT -U $PROD_USER -d $PROD_DB -t -A -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ($EXCLUDED_SCHEMAS) AND schema_name NOT LIKE 'pg_%' AND schema_name NOT LIKE 'pg_toast_%';" | tr '\n' ' ') echo "Schemas encontrados: $SCHEMAS" >> "$LOG_FILE" if [ -z "$SCHEMAS" ]; then     echo "Nenhum schema encontrado para sincronizar. Verifique permissões ou existência de schemas." >> "$LOG_FILE"     psql -h $PROD_HOST -p $PROD_PORT -U $PROD_USER -d $PROD_DB -t -A -c "SELECT schema_name FROM information_schema.schemata;" >> "$LOG_FILE" 2>&1     echo "Lista completa de schemas no banco de produção (incluindo excluídos):" >> "$LOG_FILE"     exit 0 fi
+echo "Obtendo todos os schemas do banco de produção..." >> "$LOG_FILE"
+export PGPASSWORD=$PROD_PASSWORD
+SCHEMAS=$(psql -h $PROD_HOST -p $PROD_PORT -U $PROD_USER -d $PROD_DB -t -A -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ($EXCLUDED_SCHEMAS) AND schema_name NOT LIKE 'pg_%' AND schema_name NOT LIKE 'pg_toast_%';" | tr '\n' ' ')
+echo "Schemas encontrados: $SCHEMAS" >> "$LOG_FILE"
+if [ -z "$SCHEMAS" ]; then
+    echo "Nenhum schema encontrado para sincronizar. Verifique permissões ou existência de schemas." >> "$LOG_FILE"
+    psql -h $PROD_HOST -p $PROD_PORT -U $PROD_USER -d $PROD_DB -t -A -c "SELECT schema_name FROM information_schema.schemata;" >> "$LOG_FILE" 2>&1
+    echo "Lista completa de schemas no banco de produção (incluindo excluídos):" >> "$LOG_FILE"
+    exit 0
+fi
+
 # Preparar parâmetros para schemas
-schemas_params="" for schema in $SCHEMAS; do     schemas_params="$schemas_params --schema=$schema"     echo "Incluindo schema para dump: $schema" >> "$LOG_FILE" done
+schemas_params=""
+for schema in $SCHEMAS; do
+    schemas_params="$schemas_params --schema=$schema"
+    echo "Incluindo schema para dump: $schema" >> "$LOG_FILE"
+done
+
 # Gerar dump
-echo "Gerando dump em $DUMP_FILE..." >> "$LOG_FILE" export PGPASSWORD=$PROD_PASSWORD pg_dump --host=$PROD_HOST --port=$PROD_PORT --username=$PROD_USER --dbname=$PROD_DB $schemas_params --no-owner --encoding=UTF8 --file="$DUMP_FILE" --verbose >> "$LOG_FILE" 2>&1 if [ $? -ne 0 ]; then     echo "Erro ao gerar o dump. Verifique permissões ou configurações do banco." >> "$LOG_FILE"     exit 1 fi
+echo "Gerando dump em $DUMP_FILE..." >> "$LOG_FILE"
+export PGPASSWORD=$PROD_PASSWORD
+pg_dump --host=$PROD_HOST --port=$PROD_PORT --username=$PROD_USER --dbname=$PROD_DB $schemas_params --no-owner --encoding=UTF8 --file="$DUMP_FILE" --verbose >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    echo "Erro ao gerar o dump. Verifique permissões ou configurações do banco." >> "$LOG_FILE"
+    exit 1
+fi
+
 # Remover configurações problemáticas (transaction_timeout e ALTER DEFAULT PRIVILEGES para supabase_admin)
-echo "Removendo configurações problemáticas do dump..." >> "$LOG_FILE" sed -i -e '/SET transaction_timeout/d' -e '/ALTER DEFAULT PRIVILEGES.*supabase_admin/d' "$DUMP_FILE" if [ $? -ne 0 ]; then     echo "Erro ao processar o dump." >> "$LOG_FILE"     exit 1 fi
+echo "Removendo configurações problemáticas do dump..." >> "$LOG_FILE"
+sed -i -e '/SET transaction_timeout/d' -e '/ALTER DEFAULT PRIVILEGES.*supabase_admin/d' "$DUMP_FILE"
+if [ $? -ne 0 ]; then
+    echo "Erro ao processar o dump." >> "$LOG_FILE"
+    exit 1
+fi
+
 # Criar script de limpeza
-echo "Criando script de limpeza em $CLEAN_SCRIPT..." >> "$LOG_FILE" cat > "$CLEAN_SCRIPT" << EOF -- Limpar schemas EOF for schema in $SCHEMAS; do     cat >> "$CLEAN_SCRIPT" << EOF DROP SCHEMA IF EXISTS $schema CASCADE; CREATE SCHEMA $schema; GRANT ALL ON SCHEMA $schema TO postgres; GRANT ALL ON SCHEMA $schema TO public; EOF done cat >> "$CLEAN_SCRIPT" << EOF SET client_encoding='UTF8'; CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public; EOF
+echo "Criando script de limpeza em $CLEAN_SCRIPT..." >> "$LOG_FILE"
+cat > "$CLEAN_SCRIPT" << EOF
+-- Limpar schemas
+EOF
+for schema in $SCHEMAS; do
+    cat >> "$CLEAN_SCRIPT" << EOF
+DROP SCHEMA IF EXISTS $schema CASCADE;
+CREATE SCHEMA $schema;
+GRANT ALL ON SCHEMA $schema TO postgres;
+GRANT ALL ON SCHEMA $schema TO public;
+EOF
+done
+cat >> "$CLEAN_SCRIPT" << EOF
+SET client_encoding='UTF8';
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+EOF
+
 # Criar script de concessão de privilégios
-echo "Criando script de privilégios em $GRANT_SCRIPT..." >> "$LOG_FILE" cat > "$GRANT_SCRIPT" << EOF -- Conceder privilégios ao usuário anon EOF for schema in $SCHEMAS; do     cat >> "$GRANT_SCRIPT" << EOF GRANT ALL ON ALL TABLES IN SCHEMA $schema TO anon; ALTER DEFAULT PRIVILEGES IN SCHEMA $schema GRANT ALL ON TABLES TO anon; EOF done
+echo "Criando script de privilégios em $GRANT_SCRIPT..." >> "$LOG_FILE"
+cat > "$GRANT_SCRIPT" << EOF
+-- Conceder privilégios ao usuário anon
+EOF
+for schema in $SCHEMAS; do
+    cat >> "$GRANT_SCRIPT" << EOF
+GRANT ALL ON ALL TABLES IN SCHEMA $schema TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $schema GRANT ALL ON TABLES TO anon;
+EOF
+done
+
 # Limpar schemas
-echo "Limpando schemas..." >> "$LOG_FILE" export PGPASSWORD=$HOM_PASSWORD psql --host=$HOM_HOST --port=$HOM_PORT --username=$HOM_USER --dbname=$HOM_DB --file="$CLEAN_SCRIPT" >> "$LOG_FILE" 2>&1 if [ $? -ne 0 ]; then     echo "Erro ao limpar os schemas." >> "$LOG_FILE"     exit 1 fi
+echo "Limpando schemas..." >> "$LOG_FILE"
+export PGPASSWORD=$HOM_PASSWORD
+psql --host=$HOM_HOST --port=$HOM_PORT --username=$HOM_USER --dbname=$HOM_DB --file="$CLEAN_SCRIPT" >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    echo "Erro ao limpar os schemas." >> "$LOG_FILE"
+    exit 1
+fi
+
 # Restaurar dump
-echo "Restaurando dump a partir de $DUMP_FILE..." >> "$LOG_FILE" export PGPASSWORD=$HOM_PASSWORD psql --host=$HOM_HOST --port=$HOM_PORT --username=$HOM_USER --dbname=$HOM_DB --file="$DUMP_FILE" >> "$LOG_FILE" 2>&1 if [ $? -ne 0 ]; then     echo "Erro ao restaurar o dump." >> "$LOG_FILE"     exit 1 fi
+echo "Restaurando dump a partir de $DUMP_FILE..." >> "$LOG_FILE"
+export PGPASSWORD=$HOM_PASSWORD
+psql --host=$HOM_HOST --port=$HOM_PORT --username=$HOM_USER --dbname=$HOM_DB --file="$DUMP_FILE" >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    echo "Erro ao restaurar o dump." >> "$LOG_FILE"
+    exit 1
+fi
+
 # Aplicar privilégios
-echo "Aplicando privilégios em $GRANT_SCRIPT..." >> "$LOG_FILE" export PGPASSWORD=$HOM_PASSWORD psql --host=$HOM_HOST --port=$HOM_PORT --username=$HOM_USER --dbname=$HOM_DB --file="$GRANT_SCRIPT" >> "$LOG_FILE" 2>&1 if [ $? -ne 0 ]; then     echo "Erro ao aplicar privilégios." >> "$LOG_FILE"     exit 1 fi
+echo "Aplicando privilégios em $GRANT_SCRIPT..." >> "$LOG_FILE"
+export PGPASSWORD=$HOM_PASSWORD
+psql --host=$HOM_HOST --port=$HOM_PORT --username=$HOM_USER --dbname=$HOM_DB --file="$GRANT_SCRIPT" >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    echo "Erro ao aplicar privilégios." >> "$LOG_FILE"
+    exit 1
+fi
+
 # Sincronizar storage (buckets e objetos)
 echo "Sincronizando storage..." >> "$LOG_FILE"
+
 # Validar chaves de API
-if [ -z "$PROD_SERVICE_KEY" ] || [ -z "$HOM_SERVICE_KEY" ]; then     echo "Erro: PROD_SERVICE_KEY ou HOM_SERVICE_KEY não definidas." >> "$LOG_FILE"     exit 1 fi
+if [ -z "$PROD_SERVICE_KEY" ] || [ -z "$HOM_SERVICE_KEY" ]; then
+    echo "Erro: PROD_SERVICE_KEY ou HOM_SERVICE_KEY não definidas." >> "$LOG_FILE"
+    exit 1
+fi
+
 # Testar permissões da chave de produção
-echo "Testando chave de API da produção..." >> "$LOG_FILE" prod_key_test=$(curl -s -X GET -H "Authorization: Bearer PRODSERVICEKEY"−H"Content−Type:application/json""PROD_SERVICE_KEY" -H "Content-Type: application/json" "PRODS​ERVICEK​EY"−H"Content−Type:application/json""{PROD_API_URL}/storage/v1/bucket" 2>> "$LOG_FILE") if [[ $prod_key_test == *"error"* ]]; then     echo "Erro: Falha ao autenticar com PROD_SERVICE_KEY: $prod_key_test" >> "$LOG_FILE"     exit 1 fi
+echo "Testando chave de API da produção..." >> "$LOG_FILE"
+prod_key_test=$(curl -s -X GET -H "Authorization: Bearer $PROD_SERVICE_KEY" -H "Content-Type: application/json" "${PROD_API_URL}/storage/v1/bucket" 2>> "$LOG_FILE")
+if [[ $prod_key_test == *"error"* ]]; then
+    echo "Erro: Falha ao autenticar com PROD_SERVICE_KEY: $prod_key_test" >> "$LOG_FILE"
+    exit 1
+fi
+
 # Testar permissões da chave de homologação
-echo "Testando chave de API da homologação..." >> "$LOG_FILE" hom_key_test=$(curl -s -X GET -H "Authorization: Bearer HOMSERVICEKEY"−H"Content−Type:application/json""HOM_SERVICE_KEY" -H "Content-Type: application/json" "HOMS​ERVICEK​EY"−H"Content−Type:application/json""{HOM_API_URL}/storage/v1/bucket" 2>> "$LOG_FILE") if [[ $hom_key_test == *"error"* ]]; then     echo "Erro: Falha ao autenticar com HOM_SERVICE_KEY: $hom_key_test" >> "$LOG_FILE"     exit 1 fi
+echo "Testando chave de API da homologação..." >> "$LOG_FILE"
+hom_key_test=$(curl -s -X GET -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: application/json" "${HOM_API_URL}/storage/v1/bucket" 2>> "$LOG_FILE")
+if [[ $hom_key_test == *"error"* ]]; then
+    echo "Erro: Falha ao autenticar com HOM_SERVICE_KEY: $hom_key_test" >> "$LOG_FILE"
+    exit 1
+fi
+
 # Listar buckets da produção
-source_buckets=$(curl -s -X GET -H "Authorization: Bearer PRODSERVICEKEY"−H"Content−Type:application/json""PROD_SERVICE_KEY" -H "Content-Type: application/json" "PRODS​ERVICEK​EY"−H"Content−Type:application/json""{PROD_API_URL}/storage/v1/bucket" | jq -r '.[] | .name' | tr '\n' ' ') echo "Buckets encontrados na produção: $source_buckets" >> "$LOG_FILE" if [ -z "$source_buckets" ]; then     echo "Aviso: Nenhum bucket encontrado na produção." >> "$LOG_FILE" fi
+source_buckets=$(curl -s -X GET -H "Authorization: Bearer $PROD_SERVICE_KEY" -H "Content-Type: application/json" "${PROD_API_URL}/storage/v1/bucket" | jq -r '.[] | .name' | tr '\n' ' ')
+echo "Buckets encontrados na produção: $source_buckets" >> "$LOG_FILE"
+if [ -z "$source_buckets" ]; then
+    echo "Aviso: Nenhum bucket encontrado na produção." >> "$LOG_FILE"
+fi
+
 # Listar buckets da homologação
-hom_buckets=$(curl -s -X GET -H "Authorization: Bearer HOMSERVICEKEY"−H"Content−Type:application/json""HOM_SERVICE_KEY" -H "Content-Type: application/json" "HOMS​ERVICEK​EY"−H"Content−Type:application/json""{HOM_API_URL}/storage/v1/bucket" | jq -r '.[] | .name' | tr '\n' ' ') echo "Buckets encontrados na homologação: $hom_buckets" >> "$LOG_FILE"
+hom_buckets=$(curl -s -X GET -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: application/json" "${HOM_API_URL}/storage/v1/bucket" | jq -r '.[] | .name' | tr '\n' ' ')
+echo "Buckets encontrados na homologação: $hom_buckets" >> "$LOG_FILE"
+
 # Deletar buckets na homologação que não existem na produção
-for hom_bucket in $hom_buckets; do     if ! echo " $source_buckets " | grep -q " $hom_bucket "; then         echo "Deletando bucket extra na homologação: $hom_bucket" >> "$LOG_FILE"         delete_res=$(curl -s -X DELETE -H "Authorization: Bearer HOMSERVICEKEY"−H"Content−Type:application/json""HOM_SERVICE_KEY" -H "Content-Type: application/json" "HOMS​ERVICEK​EY"−H"Content−Type:application/json""{HOM_API_URL}/storage/v1/bucket/${hom_bucket}")         if [[ $delete_res == *"error"* ]]; then             echo "Erro ao deletar bucket $hom_bucket na homologação: $delete_res" >> "$LOG_FILE"         else             echo "Bucket $hom_bucket deletado com sucesso." >> "$LOG_FILE"         fi     fi done
+for hom_bucket in $hom_buckets; do
+    if ! echo " $source_buckets " | grep -q " $hom_bucket "; then
+        echo "Deletando bucket extra na homologação: $hom_bucket" >> "$LOG_FILE"
+        delete_res=$(curl -s -X DELETE -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: application/json" "${HOM_API_URL}/storage/v1/bucket/${hom_bucket}")
+        if [[ $delete_res == *"error"* ]]; then
+            echo "Erro ao deletar bucket $hom_bucket na homologação: $delete_res" >> "$LOG_FILE"
+        else
+            echo "Bucket $hom_bucket deletado com sucesso." >> "$LOG_FILE"
+        fi
+    fi
+done
+
 # Processar buckets da produção
-for prod_bucket in $source_buckets; do     echo "Processando bucket: $prod_bucket" >> "LOG_FILE"     # Verificar se o bucket existe na homologação e obter suas propriedades     bucket_info=(curl -s -X GET -H "Authorization: Bearer PRODSERVICEKEY"−H"Content−Type:application/json""PROD_SERVICE_KEY" -H "Content-Type: application/json" "PRODS​ERVICEK​EY"−H"Content−Type:application/json""{PROD_API_URL}/storage/v1/bucket/${prod_bucket}")     public=$(echo "$bucket_info" | jq -r '.public')     echo "Propriedades do bucket $prod_bucket: public=$public" >> "LOG_FILE"     # Criar bucket na homologação se não existir     create_res=(curl -s -X POST -H "Authorization: Bearer HOMSERVICEKEY"−H"Content−Type:application/json""HOM_SERVICE_KEY" -H "Content-Type: application/json" "HOMS​ERVICEK​EY"−H"Content−Type:application/json""{HOM_API_URL}/storage/v1/bucket" -d "{"name": "$prod_bucket", "public": $public}")     if [[ $create_res == *"error"* ]] && ! [[ $create_res == *"duplicate"* || $create_res == *"Duplicate"* ]]; then         echo "Erro ao criar bucket $prod_bucket na homologação: $create_res" >> "$LOG_FILE"         continue     else         echo "Bucket $prod_bucket criado ou já existe na homologação." >> "$LOG_FILE"     fi     # Limpar objetos existentes no bucket da homologação     echo "Limpando objetos no bucket $prod_bucket na homologação..." >> "$LOG_FILE"     offset=0     limit=100     while true; do         list_res=$(curl -s -X POST -H "Authorization: Bearer HOMSERVICEKEY"−H"Content−Type:application/json""HOM_SERVICE_KEY" -H "Content-Type: application/json" "HOMS​ERVICEK​EY"−H"Content−Type:application/json""{HOM_API_URL}/storage/v1/object/list/${prod_bucket}" -d "{"limit": $limit, "offset": offset, "prefix": "", "sortBy": {"column": "name", "order": "asc"}}")         items=(echo "$list_res" | jq '. | length')         echo "Itens encontrados no bucket $prod_bucket na homologação (offset $offset): $items" >> "$LOG_FILE"         if [ "$items" -eq 0 ]; then break; fi         prefixes=$(echo "$list_res" | jq -r '[.[].name] | join(",")')         echo "Objetos a deletar: $prefixes" >> "$LOG_FILE"         payload=$(jq -n --arg bucket "prodbucket"−−argjsonprefixes"prod_bucket" --argjson prefixes "prodb​ucket"−−argjsonprefixes"(echo "$list_res" | jq '[.[].name]')" '{bucket_id: $bucket, prefixes: prefixes}')         delete_res=(curl -s -X POST -H "Authorization: Bearer HOMSERVICEKEY"−H"Content−Type:application/json""HOM_SERVICE_KEY" -H "Content-Type: application/json" "HOMS​ERVICEK​EY"−H"Content−Type:application/json""{HOM_API_URL}/storage/v1/object/remove" -d "$payload")         if [[ $delete_res == *"error"* ]]; then             echo "Erro ao deletar objetos no bucket $prod_bucket: $delete_res" >> "$LOG_FILE"         else             echo "Objetos deletados com sucesso no bucket $prod_bucket." >> "$LOG_FILE"         fi         offset=$((offset + limit))     done     # Copiar objetos da produção para homologação     echo "Copiando objetos do bucket $prod_bucket da produção para homologação..." >> "$LOG_FILE"     offset=0     limit=100     while true; do         list_res=$(curl -s -X POST -H "Authorization: Bearer PRODSERVICEKEY"−H"Content−Type:application/json""PROD_SERVICE_KEY" -H "Content-Type: application/json" "PRODS​ERVICEK​EY"−H"Content−Type:application/json""{PROD_API_URL}/storage/v1/object/list/${prod_bucket}" -d "{"limit": $limit, "offset": offset, "prefix": "", "sortBy": {"column": "name", "order": "asc"}}")         items=(echo "$list_res" | jq '. | length')         echo "Itens encontrados no bucket $prod_bucket na produção (offset $offset): $items" >> "$LOG_FILE"         if [ "$items" -eq 0 ]; then break; fi         echo "$list_res" | jq -c '.[]' | while read -r file_json; do             fname=$(echo "$file_json" | jq -r '.name')             mimetype=$(echo "$file_json" | jq -r '.metadata.mimetype // "application/octet-stream"')             cache_control=$(echo "$file_json" | jq -r '.metadata.cacheControl // "max-age=3600"')             echo "Copiando arquivo: $fname (mimetype: $mimetype, cache-control: $cache_control)" >> "$LOG_FILE"             temp_file="BASE_DIR/temp_storage_(basename "$fname" | tr -d '[:space:]')"             curl -s -f -X GET -H "Authorization: Bearer PRODSERVICEKEY""PROD_SERVICE_KEY" "PRODS​ERVICEK​EY""{PROD_API_URL}/storage/v1/object/prodbucket/{prod_bucket}/prodb​ucket/{fname}" -o "$temp_file" 2>> "$LOG_FILE"             if [ $? -ne 0 ]; then                 echo "Erro ao baixar $fname do bucket $prod_bucket na produção" >> "$LOG_FILE"                 continue             fi             upload_res=$(curl -s -X POST -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: $mimetype" -H "Cache-Control: cachecontrol"−H"x−upsert:true""cache_control" -H "x-upsert: true" "cachec​ontrol"−H"x−upsert:true""{HOM_API_URL}/storage/v1/object/prodbucket/{prod_bucket}/prodb​ucket/{fname}" --data-binary @"$temp_file" 2>> "$LOG_FILE")             if [[ $upload_res == *"error"* ]]; then                 echo "Erro ao fazer upload de $fname para o bucket $prod_bucket na homologação: $upload_res" >> "$LOG_FILE"             else                 echo "Arquivo $fname copiado com sucesso para o bucket $prod_bucket na homologação." >> "$LOG_FILE"             fi             rm -f "$temp_file"         done         offset=$((offset + limit))     done done
+for prod_bucket in $source_buckets; do
+    echo "Processando bucket: $prod_bucket" >> "$LOG_FILE"
+    # Verificar se o bucket existe na homologação e obter suas propriedades
+    bucket_info=$(curl -s -X GET -H "Authorization: Bearer $PROD_SERVICE_KEY" -H "Content-Type: application/json" "${PROD_API_URL}/storage/v1/bucket/${prod_bucket}")
+    public=$(echo "$bucket_info" | jq -r '.public')
+    echo "Propriedades do bucket $prod_bucket: public=$public" >> "$LOG_FILE"
+    # Criar bucket na homologação se não existir
+    create_res=$(curl -s -X POST -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: application/json" "${HOM_API_URL}/storage/v1/bucket" -d "{\"name\": \"$prod_bucket\", \"public\": $public}")
+    if [[ $create_res == *"error"* ]] && ! [[ $create_res == *"duplicate"* || $create_res == *"Duplicate"* ]]; then
+        echo "Erro ao criar bucket $prod_bucket na homologação: $create_res" >> "$LOG_FILE"
+        continue
+    else
+        echo "Bucket $prod_bucket criado ou já existe na homologação." >> "$LOG_FILE"
+    fi
+    # Limpar objetos existentes no bucket da homologação
+    echo "Limpando objetos no bucket $prod_bucket na homologação..." >> "$LOG_FILE"
+    offset=0
+    limit=100
+    while true; do
+        list_res=$(curl -s -X POST -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: application/json" "${HOM_API_URL}/storage/v1/object/list/${prod_bucket}" -d "{\"limit\": $limit, \"offset\": $offset, \"prefix\": \"\", \"sortBy\": {\"column\": \"name\", \"order\": \"asc\"}}")
+        items=$(echo "$list_res" | jq '. | length')
+        echo "Itens encontrados no bucket $prod_bucket na homologação (offset $offset): $items" >> "$LOG_FILE"
+        if [ "$items" -eq 0 ]; then break; fi
+        prefixes=$(echo "$list_res" | jq -r '[.[].name] | join(",")')
+        echo "Objetos a deletar: $prefixes" >> "$LOG_FILE"
+        payload=$(jq -n --arg bucket "$prod_bucket" --argjson prefixes "$(echo "$list_res" | jq '[.[].name]')" '{bucket_id: $bucket, prefixes: $prefixes}')
+        delete_res=$(curl -s -X POST -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: application/json" "${HOM_API_URL}/storage/v1/object/remove" -d "$payload")
+        if [[ $delete_res == *"error"* ]]; then
+            echo "Erro ao deletar objetos no bucket $prod_bucket: $delete_res" >> "$LOG_FILE"
+        else
+            echo "Objetos deletados com sucesso no bucket $prod_bucket." >> "$LOG_FILE"
+        fi
+        offset=$((offset + limit))
+    done
+    # Copiar objetos da produção para homologação
+    echo "Copiando objetos do bucket $prod_bucket da produção para homologação..." >> "$LOG_FILE"
+    offset=0
+    limit=100
+    while true; do
+        list_res=$(curl -s -X POST -H "Authorization: Bearer $PROD_SERVICE_KEY" -H "Content-Type: application/json" "${PROD_API_URL}/storage/v1/object/list/${prod_bucket}" -d "{\"limit\": $limit, \"offset\": $offset, \"prefix\": \"\", \"sortBy\": {\"column\": \"name\", \"order\": \"asc\"}}")
+        items=$(echo "$list_res" | jq '. | length')
+        echo "Itens encontrados no bucket $prod_bucket na produção (offset $offset): $items" >> "$LOG_FILE"
+        if [ "$items" -eq 0 ]; then break; fi
+        echo "$list_res" | jq -c '.[]' | while read -r file_json; do
+            fname=$(echo "$file_json" | jq -r '.name')
+            mimetype=$(echo "$file_json" | jq -r '.metadata.mimetype // "application/octet-stream"')
+            cache_control=$(echo "$file_json" | jq -r '.metadata.cacheControl // "max-age=3600"')
+            echo "Copiando arquivo: $fname (mimetype: $mimetype, cache-control: $cache_control)" >> "$LOG_FILE"
+            temp_file="$BASE_DIR/temp_storage_$(basename "$fname" | tr -d '[:space:]')"
+            curl -s -f -X GET -H "Authorization: Bearer $PROD_SERVICE_KEY" "${PROD_API_URL}/storage/v1/object/${prod_bucket}/${fname}" -o "$temp_file" 2>> "$LOG_FILE"
+            if [ $? -ne 0 ]; then
+                echo "Erro ao baixar $fname do bucket $prod_bucket na produção" >> "$LOG_FILE"
+                continue
+            fi
+            upload_res=$(curl -s -X POST -H "Authorization: Bearer $HOM_SERVICE_KEY" -H "Content-Type: $mimetype" -H "Cache-Control: $cache_control" -H "x-upsert: true" "${HOM_API_URL}/storage/v1/object/${prod_bucket}/${fname}" --data-binary @"$temp_file" 2>> "$LOG_FILE")
+            if [[ $upload_res == *"error"* ]]; then
+                echo "Erro ao fazer upload de $fname para o bucket $prod_bucket na homologação: $upload_res" >> "$LOG_FILE"
+            else
+                echo "Arquivo $fname copiado com sucesso para o bucket $prod_bucket na homologação." >> "$LOG_FILE"
+            fi
+            rm -f "$temp_file"
+        done
+        offset=$((offset + limit))
+    done
+done
+
 # Limpar arquivos temporários
-echo "Limpando arquivos temporários..." >> "$LOG_FILE" rm -f "$DUMP_FILE" "$CLEAN_SCRIPT" "$GRANT_SCRIPT" "$BASE_DIR/temp_storage_*" echo "Sincronização concluída: $(date)" >> "$LOG_FILE"
+echo "Limpando arquivos temporários..." >> "$LOG_FILE"
+rm -f "$DUMP_FILE" "$CLEAN_SCRIPT" "$GRANT_SCRIPT" "$BASE_DIR/temp_storage_*"
+echo "Sincronização concluída: $(date)" >> "$LOG_FILE"
