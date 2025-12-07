@@ -1,0 +1,32 @@
+name: Sincronizar Bancos Supabase
+
+on:
+  workflow_dispatch:  # Apenas manual, sem agendamento automático
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      PROD_PASSWORD: ${{ secrets.PROD_PASSWORD }}
+      HOM_PASSWORD: ${{ secrets.HOM_PASSWORD }}
+      PROD_SERVICE_KEY: ${{ secrets.PROD_SERVICE_KEY }}
+      HOM_SERVICE_KEY: ${{ secrets.HOM_SERVICE_KEY }}
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar dependências
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq postgresql-client
+
+      - name: Executar script de sincronização
+        run: bash sync_prod_to_hom.sh  # Se estiver em pasta, mude para: bash scripts/sync_prod_to_hom.sh
+
+      - name: Upload log como artefato (para debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-log
+          path: /home/runner/scripts/sync_log_*.txt  # Ajuste se BASE_DIR mudar no script
