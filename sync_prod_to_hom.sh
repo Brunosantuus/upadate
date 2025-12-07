@@ -9,13 +9,13 @@ export PGCLIENTENCODING=UTF8
 # Configurações do banco de produção (ORIGEM)
 PROD_HOST=aws-0-sa-east-1.pooler.supabase.com  # Pooler host para IPv4
 PROD_PORT=5432  # Session mode para IPv4
-PROD_USER=postgres.terdsdmcunfhfhheewsk  # postgres.<ref>
+PROD_USER=postgres.terdsdmcunfhfhheewsk  # User completo para pooler
 PROD_DB=postgres
 PROD_PASSWORD="0000" # Senha hardcoded para teste (NÃO USE EM PRODUÇÃO REAL!)
 # Configurações do banco de homologação (DESTINO)
 HOM_HOST=aws-0-sa-east-1.pooler.supabase.com  # Pooler host para IPv4
 HOM_PORT=5432  # Session mode para IPv4
-HOM_USER=postgres.kuyxmznpppyfbvzujipn  # postgres.<ref>
+HOM_USER=postgres.kuyxmznpppyfbvzujipn  # User completo para pooler
 HOM_DB=postgres
 HOM_PASSWORD="rio_bonito1234" # Senha hardcoded para teste (NÃO USE EM PRODUÇÃO REAL!)
 # Configurações para API Supabase (para storage)
@@ -35,8 +35,8 @@ GRANT_SCRIPT=$BASE_DIR/grant_privileges.sql
 echo "Início: $(date)" >> "$LOG_FILE"
 echo "Diretório base: $BASE_DIR" >> "$LOG_FILE"
 # Adicionar logs extras para depuração
-echo "PROD_HOST: $PROD_HOST | PROD_PORT: $PROD_PORT" >> "$LOG_FILE"
-echo "HOM_HOST: $HOM_HOST | HOM_PORT: $HOM_PORT" >> "$LOG_FILE"
+echo "PROD_HOST: $PROD_HOST | PROD_PORT: $PROD_PORT | PROD_USER: $PROD_USER" >> "$LOG_FILE"
+echo "HOM_HOST: $HOM_HOST | HOM_PORT: $HOM_PORT | HOM_USER: $HOM_USER" >> "$LOG_FILE"
 echo "PROD_SERVICE_KEY definida: ${PROD_SERVICE_KEY:+sim}" >> "$LOG_FILE"
 echo "HOM_SERVICE_KEY definida: ${HOM_SERVICE_KEY:+sim}" >> "$LOG_FILE"
 # Verificar ferramentas
