@@ -7,15 +7,15 @@ echo "Iniciando sync_prod_to_hom.sh..." >> "$LOG_FILE"
 # Configurar codificação
 export PGCLIENTENCODING=UTF8
 # Configurações do banco de produção (ORIGEM)
-PROD_HOST=db.terdsdmcunfhfhheewsk.supabase.co
-PROD_PORT=6543 # Mudado para pooling (recomendado para estabilidade no Actions)
-PROD_USER=postgres
+PROD_HOST=aws-0-sa-east-1.pooler.supabase.com  # Pooler host para IPv4
+PROD_PORT=5432  # Session mode para IPv4
+PROD_USER=postgres.terdsdmcunfhfhheewsk  # postgres.<ref>
 PROD_DB=postgres
 PROD_PASSWORD="0000" # Senha hardcoded para teste (NÃO USE EM PRODUÇÃO REAL!)
 # Configurações do banco de homologação (DESTINO)
-HOM_HOST=db.kuyxmznpppyfbvzujipn.supabase.co
-HOM_PORT=6543 # Mudado para pooling
-HOM_USER=postgres
+HOM_HOST=aws-0-sa-east-1.pooler.supabase.com  # Pooler host para IPv4
+HOM_PORT=5432  # Session mode para IPv4
+HOM_USER=postgres.kuyxmznpppyfbvzujipn  # postgres.<ref>
 HOM_DB=postgres
 HOM_PASSWORD="rio_bonito1234" # Senha hardcoded para teste (NÃO USE EM PRODUÇÃO REAL!)
 # Configurações para API Supabase (para storage)
